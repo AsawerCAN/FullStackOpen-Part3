@@ -11,7 +11,10 @@ let persons = [
 ];
 
 app.use(express.json());
-app.use(morgan("tiny"));
+// app.use(morgan("tiny"));
+morgan.token("body", (req) => {
+  return req.method === "POST" ? JSON.stringify(req.body) : "";
+});
 
 app.get("/api/persons", (req, res) => {
   res.json(persons);
