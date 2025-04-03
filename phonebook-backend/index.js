@@ -8,6 +8,8 @@ let persons = [
   { id: "4", name: "Mary Poppendieck", number: "39-23-6423122" },
 ];
 
+app.use(express.json());
+
 app.get("/api/persons", (req, res) => {
   res.json(persons);
 });
@@ -44,6 +46,28 @@ app.delete("/api/persons/:id", (req, res) => {
   } else {
     res.status(404).end();
   }
+});
+
+app.post("/api/persons", (req, res) => {
+  const body = req.body;
+
+  if (!body.name || !body.number) {
+    return res.status(400).json({ error: "name or number is missing" });
+  }
+
+  const existingPerson = persons.find((p) => p.name === body.name);
+  if (existingPerson) {
+    return res.status(400).json({ error: "name must be unique" });
+  }
+
+  const newPerson = {
+    id: Math.floor(Math.random() * 1000000).toString(),
+    name: body.name,
+    number: body.number,
+  };
+
+  persons = persons.concat(newPerson);
+  res.status(201).json(newPerson);
 });
 
 const PORT = 3001;
