@@ -113,7 +113,6 @@ app.put("/api/persons/:id", (req, res) => {
   res.json(updatedPerson);
 });
 
-// Catch-all route to serve the React app
 app.get("/{*splat}", (req, res) => {
   res.sendFile(path.join(frontendBuildPath, "index.html"));
 });
