@@ -1,4 +1,5 @@
 const express = require("express");
+const path = require("path");
 const morgan = require("morgan");
 const cors = require("cors");
 
@@ -14,13 +15,19 @@ let persons = [
 app.use(express.json());
 app.use(cors());
 app.use(morgan("tiny"));
+
+// Serve static files from the React app
+const frontendBuildPath = path.join(__dirname, "../phonebook-backend", "dist");
+app.use(express.static(frontendBuildPath));
+console.log(frontendBuildPath);
+
 // Custom token for logging POST request body
-morgan.token("body", (req) => {
-  return req.method === "POST" ? JSON.stringify(req.body) : "";
-});
-app.use(
-  morgan(":method :url :status :res[content-length] - :response-time ms :body")
-);
+// morgan.token("body", (req) => {
+//   return req.method === "POST" ? JSON.stringify(req.body) : "";
+// });
+// app.use(
+//   morgan(":method :url :status :res[content-length] - :response-time ms :body")
+// );
 
 app.get("/api/persons", (req, res) => {
   res.json(persons);
@@ -80,6 +87,35 @@ app.post("/api/persons", (req, res) => {
 
   persons = persons.concat(newPerson);
   res.status(201).json(newPerson);
+});
+
+app.put("/api/persons/:id", (req, res) => {
+  const id = req.params.id;
+  const body = req.body;
+
+  if (!body.name || !body.number) {
+    return res.status(400).json({ error: "name or number is missing" });
+  }
+
+  const personIndex = persons.findIndex((p) => p.id === id);
+
+  if (personIndex === -1) {
+    return res.status(404).json({ error: `Person with id ${id} not found` });
+  }
+
+  const updatedPerson = {
+    ...persons[personIndex],
+    name: body.name,
+    number: body.number,
+  };
+  persons[personIndex] = updatedPerson;
+
+  res.json(updatedPerson);
+});
+
+// Catch-all route to serve the React app
+app.get("/{*splat}", (req, res) => {
+  res.sendFile(path.join(frontendBuildPath, "index.html"));
 });
 
 const PORT = 3001;
