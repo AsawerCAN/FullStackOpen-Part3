@@ -75,11 +75,18 @@ app.delete("/api/persons/:id", (req, res, next) => {
 });
 
 // POST a new person
-app.post("/api/persons", (req, res, next) => {
+app.post("/api/persons", async (req, res, next) => {
   const body = req.body;
 
   if (!body.name || !body.number) {
     return res.status(400).json({ error: "name or number is missing" });
+  }
+
+  const existingPerson = await Person.findOne({ name: body.name });
+  if (existingPerson) {
+    return res.status(409).json({
+      error: "already exists- name must be unique",
+    });
   }
 
   const person = new Person({
