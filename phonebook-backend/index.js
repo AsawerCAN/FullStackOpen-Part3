@@ -13,10 +13,18 @@ app.use(express.json());
 app.use(cors());
 app.use(morgan("tiny"));
 
-const frontendBuildPath = path.join(__dirname, "../phonebook-backend", "dist");
+const frontendBuildPath = path.join(__dirname, "dist");
 app.use(express.static(frontendBuildPath));
+console.log(`Serving static files from: ${frontendBuildPath}`);
 
 const mongoUrl = process.env.MONGO_URI;
+if (!mongoUrl) {
+  console.error(
+    "MongoDB connection error: MONGO_URI environment variable not set."
+  );
+  process.exit(1);
+}
+mongoose.set("strictQuery", false);
 mongoose
   .connect(mongoUrl)
   .then(() => {
@@ -24,6 +32,7 @@ mongoose
   })
   .catch((error) => {
     console.error("Error connecting to MongoDB:", error.message);
+    process.exit(1);
   });
 
 // GET all persons
@@ -57,7 +66,7 @@ app.get("/api/persons/:id", (req, res, next) => {
       if (person) {
         res.json(person);
       } else {
-        res.status(404).end();
+        res.status(404).json({ error: "Person not found" });
       }
     })
     .catch((error) => next(error));
@@ -67,58 +76,59 @@ app.get("/api/persons/:id", (req, res, next) => {
 app.delete("/api/persons/:id", (req, res, next) => {
   const id = req.params.id;
 
-  Person.findByIdAndRemove(id)
-    .then(() => {
-      res.status(204).end();
+  Person.findByIdAndDelete(id)
+    .then((result) => {
+      if (result) {
+        res.status(204).end();
+      } else {
+        res.status(404).json({ error: "Person not found" });
+      }
     })
-    .catch((error) => next(error));
+    .catch((error) => {
+      console.error("Backend delete error:", error);
+      next(error);
+    });
 });
 
 // POST a new person
 app.post("/api/persons", async (req, res, next) => {
-  const body = req.body;
+  const { name, number } = req.body;
 
-  if (!body.name || !body.number) {
+  if (!name || !number) {
     return res.status(400).json({ error: "name or number is missing" });
   }
 
-  const existingPerson = await Person.findOne({ name: body.name });
-  if (existingPerson) {
-    return res.status(409).json({
-      error: "already exists- name must be unique",
-    });
-  }
-
   const person = new Person({
-    name: body.name,
-    number: body.number,
+    name,
+    number,
   });
 
-  person
-    .save()
-    .then((savedPerson) => {
-      res.status(201).json(savedPerson);
-    })
-    .catch((error) => next(error));
+  try {
+    const savedPerson = await person.save();
+    res.status(201).json(savedPerson);
+  } catch (error) {
+    next(error);
+  }
 });
 
 // PUT (update) person by ID
 app.put("/api/persons/:id", (req, res, next) => {
+  const { name, number } = req.body;
   const id = req.params.id;
-  const body = req.body;
 
-  if (!body.name || !body.number) {
+  if (!name || !number) {
     return res.status(400).json({ error: "name or number is missing" });
   }
 
-  const updatedPerson = {
-    name: body.name,
-    number: body.number,
+  const personUpdates = {
+    name,
+    number,
   };
 
-  Person.findByIdAndUpdate(id, updatedPerson, {
+  Person.findByIdAndUpdate(id, personUpdates, {
     new: true,
     runValidators: true,
+    context: "query",
   })
     .then((updatedPerson) => {
       if (updatedPerson) {
@@ -131,25 +141,42 @@ app.put("/api/persons/:id", (req, res, next) => {
 });
 
 app.get("/{*splat}", (req, res) => {
-  res.sendFile(path.join(frontendBuildPath, "index.html"));
+  const indexFile = path.join(frontendBuildPath, "index.html");
+  res.sendFile(indexFile, (err) => {
+    if (err) {
+      console.error("Error serving index.html:", err);
+      res.status(500).send("Error serving application");
+    }
+  });
 });
 
 // Error-handling middleware
 const errorHandler = (error, req, res, next) => {
-  console.error("Error:", error.message);
+  console.error("Error Name:", error.name);
+  console.error("Error Message:", error.message);
 
   if (error.name === "CastError") {
     return res.status(400).json({ error: "Malformatted ID" });
   } else if (error.name === "ValidationError") {
-    return res.status(400).json({ error: error.message });
+    const messages = Object.values(error.errors)
+      .map((el) => el.message)
+      .join(". ");
+    return res.status(400).json({ error: messages || error.message });
+  } else if (error.code === 11000) {
+    return res.status(409).json({
+      error: `Duplicate key error: ${
+        Object.keys(error.keyValue)[0]
+      } must be unique.`,
+    });
   }
-
-  return res.status(500).json({ error: "Internal server error" });
+  res
+    .status(500)
+    .json({ error: "An unexpected internal server error occurred" });
 };
 
 app.use(errorHandler);
 
-const PORT = 3001;
+const PORT = process.env.PORT || 3001;
 app.listen(PORT, () => {
   console.log(`Server running on http://localhost:${PORT}`);
 });
